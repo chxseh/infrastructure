@@ -1,0 +1,29 @@
+ssh_pub_key: "ssh-rsa AAAAB3NzaC1yc2EAAAABJQAAAgEAl0RAO57z8QGPvy8VjP50f5HI8jso69tkBPwt7Pq61xdkiKuf6LAwM5j68UkuL42utCMoWvNxOVefkibz2gPSJMDX/Ke1iQMoADlAaxsE/V9TlgbNXBdfEgUD85jOw85oCpm64XI6hsdxKqIBG73TUOfONsxrwhflaVmVtc0Q3hpEkHJejPCTnWLc0B/o19LsQqDO2dM8IBvqZBByQkBbT5QKRk7Uo0QkT+gcapvpuIIfd60ttSVcPAe0hLn4SNojwM3oHx6uPLq2XbCWTdn+ErKUsiyDfFrgu8UzRKw3q0/rCvWUEoSkwMfd2Ad4/torFryeLuBCr7JqJcyarYvue93WpABBz7mSB2v7hreTRdZTFFklRO/JGBuTE4LECszdvLgwJQz9GRJCBTqAol5XIH7ZJdeEGVIT9/87qZpWB3pCcb2Yqxsd/p0bbTVEyoI5vTpHIaYpQFBQPxO4KHkMVKw6CDp14am78vagYdYkE0FUgBEvd5K8W8ktkOW1C5axQ2SiAlP003Oe3ABHU8w2+8undZrzLxB5ebh5hEnVQ0lfMQZC0cQ4reBeSXScN0FHWbMmb91z0WMLVSqtB4kzLEngAEek4EKboomcVmo7tZF4GAPAkXY2K4uJTDpHGpjoJK+gLWC+Kwma6Boy0OuTERaOmpxIHjh68tUCKOwt+H0="
+# See also: ssh_priv_key
+username: "{{ ansible_user }}"
+packages:
+  - vim
+  - apt-transport-https
+  - git
+  - dos2unix
+  - fail2ban
+  - unattended-upgrades
+  - ca-certificates
+  - curl
+  - gnupg
+  - lsb-release
+  - neofetch
+  - zsh
+  - htop
+  - sed
+  - software-properties-common
+  - gnupg-agent
+  - rsync
+motd: |
+  #!/bin/sh
+  clear
+  neofetch
+  echo
+sync_wsf: false
+sync_docker: false
+sync_hf_and_cli_acc: false

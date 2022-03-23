@@ -1,0 +1,42 @@
+username: "{{ ansible_user }}"
+
+packages_ms:
+  - docker-ce
+  - docker-ce-cli
+  - containerd.io
+  - docker-compose
+  - golang
+  - apache2
+  - mysql-server
+  - php
+  - php
+  - php-bcmath
+  - php-bz2
+  - php-curl
+  - php-intl
+  - php-mbstring
+  - php-mysql
+  - php-readline
+  - php-xml
+  - php-zip
+  - php-apcu-bc
+  - php-apcu
+  - php-cli
+  - php-common
+  - php-fpm
+  - php-gd
+  - php-igbinary
+  - php-imagick
+  - php-json
+  - php-pear
+  - php-redis
+  - php-dev
+  - php-gmp
+  - php-opcache
+  - php-soap
+  - libapache2-mod-php7.4
+  - php-mysql
+  - python3-pymysql
+  - snapd
+  - nodejs
+  - npm

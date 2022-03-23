@@ -1,0 +1,7 @@
+# ansible-lint cache
+.cache/
+
+# Misc
+*.retry
+*.bak
+.DS_Store

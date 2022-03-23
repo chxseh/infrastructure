@@ -1,0 +1,331 @@
+- name: Add Docker GPG key
+  apt_key:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    state: present
+
+- name: Add Docker Repository
+  apt_repository:
+    repo: deb https://download.docker.com/linux/ubuntu bionic stable
+    state: present
+
+- name: Update Packages
+  apt:
+    update_cache: yes
+    upgrade: yes
+
+- name: Install Packages
+  package:
+    name: "{{ packages_ms }}"
+    state: latest
+
+- name: Ensure Docker is running
+  service:
+    name: docker
+    state: started
+    enabled: yes
+
+- name: Go get lazydocker
+  shell: go get -u github.com/jesseduffield/lazydocker
+  changed_when: false
+
+- name: Cloudflare Secrets
+  copy:
+    content: |
+      # Cloudflare API credentials used by Certbot
+      dns_cloudflare_email = "{{ CF_email }}"
+      dns_cloudflare_api_key = "{{ CF_auth_key }}"
+    dest: /root/cfapicertbot.txt
+    owner: root
+    mode: 0600
+
+- name: Cloudflare Secrets 2
+  copy:
+    content: "{{ CF_auth_key }}\n"
+    dest: /root/CF_auth_key.txt
+    owner: root
+    mode: 0600
+
+- name: DB Secret
+  copy:
+    content: "{{ DB_PW }}\n"
+    dest: /root/DB_PW.txt
+    owner: root
+    mode: 0600
+
+- name: MIAB Secret
+  copy:
+    content: "{{ MIAB_PW }}\n"
+    dest: /root/MIAB_PW.txt
+    owner: root
+    mode: 0600
+
+- name: "Cronjob: ddns.sh every 15m"
+  cron:
+    name: Update DDNS
+    minute: "*/15"
+    user: root
+    job: /root/ddns.sh
+
+- name: "Cronjob: Every day at midnight run certbot renew"
+  cron:
+    name: Renew Certbot Certificates
+    minute: "0"
+    hour: "0"
+    user: root
+    job: certbot renew --dns-cloudflare --dns-cloudflare-credentials /root/cfapicertbot.txt
+
+- name: "Cronjob: Every day at 1 am, run backup"
+  cron:
+    name: Backup
+    minute: "0"
+    hour: "1"
+    user: root
+    job: /root/Scripts/Backup/Backup.sh
+
+- name: "Cronjob: Every day at 2 am, prune docker images"
+  cron:
+    name: Prune Docker Images
+    minute: "0"
+    hour: "2"
+    user: root
+    job: echo y | docker image prune
+
+- name: "Cronjob: Backup sm2 Bot DB every hour"
+  cron:
+    name: Backup sm2 Bot DB
+    minute: "0"
+    hour: "*"
+    user: root
+    job: /root/Scripts/Backup/sm2-Backup.sh
+
+- name: "Cronjob: Send MP WP Emails every hour"
+  cron:
+    name: Send MP WP Emails
+    minute: "0"
+    hour: "*"
+    user: root
+    job: curl --silent "{{ MP_WP_GUID }}" > /dev/null 2>&1
+
+- name: "Cronjob: Nextcloud Job every 15m"
+  cron:
+    name: Nextcloud Job
+    minute: "*/15"
+    user: www-data
+    job: flock /tmp php --define apc.enable_cli=1 -f /var/www/nextcloud/cron.php
+
+- name: "MySQL: Set Root Password"
+  no_log: true
+  community.mysql.mysql_user:
+    name: root
+    password: "{{ DB_PW }}"
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+
+- name: Copy .my.cnf for easier mysql automation
+  blockinfile:
+    path: ~/.my.cnf
+    create: yes
+    block: |
+      [client]
+      user=root
+      password="{{ DB_PW }}"
+
+- name: "MySQL: Remove test database"
+  no_log: true
+  community.mysql.mysql_db:
+    name: test
+    state: absent
+
+- name: "MySQL: Prohibit Remote Root login"
+  no_log: true
+  community.mysql.mysql_query:
+    login_db: mysql
+    query: "{{ item }}"
+  with_items:
+    - DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');
+    - FLUSH PRIVILEGES;
+
+- name: Configure apache2
+  lineinfile:
+    path: /etc/apache2/mods-enabled/dir.conf
+    regexp: "^\tDirectoryIndex index.html index.cgi index.pl index.php index.xhtml index.htm$"
+    line: "\tDirectoryIndex index.php index.html index.cgi index.pl index.xhtml index.htm"
+  register: apache2_config
+
+- name: Restart apache2
+  service:
+    name: apache2
+    state: restarted
+  when: apache2_config.changed
+
+- name: Update Snap
+  shell: snap refresh
+  changed_when: false
+
+- name: Install certbot
+  community.general.snap:
+    name: certbot
+    classic: yes
+
+- name: Trust certbot with root
+  shell: snap set certbot trust-plugin-with-root=ok
+  changed_when: false
+
+- name: Install certbot cloudflare plugin
+  community.general.snap:
+    name: certbot-dns-cloudflare
+
+- name: Connect snap
+  shell: snap connect certbot:plugin certbot-dns-cloudflare
+  changed_when: false
+
+# I don't think we need this since we sync files from backup which contain account info.
+# - name: Setup certbot for automation
+#   shell: certbot register --non-interactive --register-unsafely-without-email --agree-tos
+#   changed_when: false
+#   when: sync_wsf == "true"
+
+- name: Enable apache2 modules
+  shell: a2enmod actions headers proxy proxy_ajp proxy_balancer proxy_connect proxy_fcgi proxy_html proxy_http proxy_wstunnel rewrite slotmem_shm socache_shmcb ssl xml2enc
+  register: apache2_modules
+
+- name: Restart apache2
+  service:
+    name: apache2
+    state: restarted
+  when: apache2_modules.changed
+
+- name: Sync /var/www/
+  shell: sudo rsync -azrdu --delete -e 'ssh -p "{{ hostvars[groups['backup_servers'][0]].ansible_port }}" -o StrictHostKeyChecking=no' --delete "{{ hostvars[groups['backup_servers'][0]].ansible_user }}"@"{{ hostvars[groups['backup_servers'][0]].ansible_host }}":/home/pi/backups/www/var-www/ /var/www/
+  when: sync_wsf == "true"
+
+- name: Sync /etc/letsencrypt/
+  shell: sudo rsync -azrdu --delete -e 'ssh -p "{{ hostvars[groups['backup_servers'][0]].ansible_port }}" -o StrictHostKeyChecking=no' --delete "{{ hostvars[groups['backup_servers'][0]].ansible_user }}"@"{{ hostvars[groups['backup_servers'][0]].ansible_host }}":/home/pi/backups/www/etc-letsencrypt/ /etc/letsencrypt/
+  when: sync_wsf == "true"
+
+- name: Sync /etc/apache2
+  shell: sudo rsync -azrdu --delete -e 'ssh -p "{{ hostvars[groups['backup_servers'][0]].ansible_port }}" -o StrictHostKeyChecking=no' --delete "{{ hostvars[groups['backup_servers'][0]].ansible_user }}"@"{{ hostvars[groups['backup_servers'][0]].ansible_host }}":/home/pi/backups/www/etc-apache2/ /etc/apache2/
+  when: sync_wsf == "true"
+
+- name: Sync MySQL Database
+  shell: sudo rsync -az -e 'ssh -p "{{ hostvars[groups['backup_servers'][0]].ansible_port }}" -o StrictHostKeyChecking=no' --delete "{{ hostvars[groups['backup_servers'][0]].ansible_user }}"@"{{ hostvars[groups['backup_servers'][0]].ansible_host }}":/home/pi/backups/www/WWW-SQL-Dump.sql /tmp/WWW-SQL-Dump.sql
+  when: sync_wsf == "true"
+
+- name: Import .sql file into MySQL
+  no_log: true
+  shell: mysql -u root -p{{ DB_PW }} < /tmp/WWW-SQL-Dump.sql
+  changed_when: false
+  when: sync_wsf == "true"
+
+- name: Delete Imported .sql file
+  file:
+    path: /tmp/WWW-SQL-Dump.sql
+    state: absent
+  when: sync_wsf == "true"
+
+- name: Restart apache2 after sync
+  service:
+    name: apache2
+    state: restarted
+  when: sync_wsf == "true"
+
+- name: Create Docker Folders
+  shell: mkdir -p /root/metabase-data/ && mkdir -p /{pbin-data,vw-data} && mkdir -p /root/ShareX-Upload-Server/ && mkdir -p /var/lib/docker/volumes/SelfHostedRSS-data/_data/ && mkdir -p /var/lib/docker/volumes/portainer_data/_data/
+  changed_when: false
+
+- name: Sync Metabase Volume
+  shell: sudo rsync -azrdu --delete -e 'ssh -p "{{ hostvars[groups['backup_servers'][0]].ansible_port }}" -o StrictHostKeyChecking=no' --delete "{{ hostvars[groups['backup_servers'][0]].ansible_user }}"@"{{ hostvars[groups['backup_servers'][0]].ansible_host }}":/home/pi/backups/docker/metabase-data/ /root/metabase-data/
+  when: sync_docker == "true"
+
+- name: Sync PrivateBin Volume
+  shell: sudo rsync -azrdu --delete -e 'ssh -p "{{ hostvars[groups['backup_servers'][0]].ansible_port }}" -o StrictHostKeyChecking=no' --delete "{{ hostvars[groups['backup_servers'][0]].ansible_user }}"@"{{ hostvars[groups['backup_servers'][0]].ansible_host }}":/home/pi/backups/docker/pbin-data/ /pbin-data/
+  when: sync_docker == "true"
+
+- name: Sync Vaultwarden Volume
+  shell: sudo rsync -azrdu --delete -e 'ssh -p "{{ hostvars[groups['backup_servers'][0]].ansible_port }}" -o StrictHostKeyChecking=no' --delete "{{ hostvars[groups['backup_servers'][0]].ansible_user }}"@"{{ hostvars[groups['backup_servers'][0]].ansible_host }}":/home/pi/backups/docker/vw-data/ /vw-data/
+  when: sync_docker == "true"
+
+- name: Sync ShareX-Upload-Server Volume
+  shell: sudo rsync -azrdu --delete -e 'ssh -p "{{ hostvars[groups['backup_servers'][0]].ansible_port }}" -o StrictHostKeyChecking=no' --delete "{{ hostvars[groups['backup_servers'][0]].ansible_user }}"@"{{ hostvars[groups['backup_servers'][0]].ansible_host }}":/home/pi/backups/docker/ShareX-Upload-Server/ /root/ShareX-Upload-Server/
+  when: sync_docker == "true"
+
+- name: Sync SelfHostedRSS-data Volume
+  shell: sudo rsync -azrdu --delete -e 'ssh -p "{{ hostvars[groups['backup_servers'][0]].ansible_port }}" -o StrictHostKeyChecking=no' --delete "{{ hostvars[groups['backup_servers'][0]].ansible_user }}"@"{{ hostvars[groups['backup_servers'][0]].ansible_host }}":/home/pi/backups/docker/SelfHostedRSS-data/ /var/lib/docker/volumes/SelfHostedRSS-data/
+  when: sync_docker == "true"
+
+- name: Fix /var/www perms
+  shell: sudo chown -R www-data:www-data /var/www
+  changed_when: false
+  when: sync_wsf == "true"
+
+- name: Sync Docker Compose
+  shell: sudo rsync -az -e 'ssh -p "{{ hostvars[groups['backup_servers'][0]].ansible_port }}" -o StrictHostKeyChecking=no' --delete "{{ hostvars[groups['backup_servers'][0]].ansible_user }}"@"{{ hostvars[groups['backup_servers'][0]].ansible_host }}":/home/pi/backups/docker/docker-compose.yml /root/docker-compose.yml
+  when: sync_docker == "true"
+
+- name: Start Docker Containers
+  shell: docker-compose -f /root/docker-compose.yml up -d
+  changed_when: false
+  when: sync_docker == "true"
+
+- name: Build ShareX-Upload-Server
+  shell: cd /root/ShareX-Upload-Server/ && docker build -t sharex-upload-server .
+  changed_when: false
+  when: sync_docker == "true"
+
+- name: Deploy ShareX-Upload-Server
+  shell: cd /root/ShareX-Upload-Server/ && docker run --name sharex-upload-server -d -v $(pwd)/src/config.json:/usr/src/app/config.json -v $(pwd)/src/db.json:/usr/src/app/db.json -v $(pwd)/src/server/uploads/:/usr/src/app/server/uploads/ -p 1995:80 sharex-upload-server
+  changed_when: false
+  when: sync_docker == "true"
+
+# We move data here earlier, now we actually let docker know it exists.
+- name: Create Portainer Volume
+  shell: docker volume create portainer_data
+  changed_when: false
+  when: sync_docker == "true"
+
+- name: Install Portainer
+  shell: docker run -d -p 9000:9000 -p 8000:8000 -v /var/run/docker.sock:/var/run/docker.sock -v portainer_data:/data --name portainer portainer/portainer-ce
+  changed_when: false
+  when: sync_docker == "true"
+
+- name: Install n from npm
+  community.general.npm:
+    name: n
+    global: yes
+
+- name: Use n to upgrade node.
+  shell: n 16
+  changed_when: false
+
+- name: Install pm2
+  community.general.npm:
+    name: pm2
+    global: yes
+
+- name: Sync Home Folder
+  shell: sudo rsync -azrdu --delete -e 'ssh -p "{{ hostvars[groups['backup_servers'][0]].ansible_port }}" -o StrictHostKeyChecking=no' --delete "{{ hostvars[groups['backup_servers'][0]].ansible_user }}"@"{{ hostvars[groups['backup_servers'][0]].ansible_host }}":/home/pi/backups/root-home/ /root/
+  when: sync_hf_and_cli_acc == "true"
+
+- name: Create User github-ci-runner
+  no_log: true
+  shell: useradd -m -s /bin/bash -G sudo,wheel -p $(< /dev/urandom tr -dc _A-Z-a-z-0-9 | head -c${1:-32};echo;) github-ci-runner
+  changed_when: false
+  when: sync_hf_and_cli_acc == "true"
+
+- name: Sync GHCIR HF
+  shell: sudo rsync -azrdu --delete -e 'ssh -p "{{ hostvars[groups['backup_servers'][0]].ansible_port }}" -o StrictHostKeyChecking=no' --delete "{{ hostvars[groups['backup_servers'][0]].ansible_user }}"@"{{ hostvars[groups['backup_servers'][0]].ansible_host }}":/home/pi/backups/github-ci-runner/ /home/github-ci-runner/
+  when: sync_hf_and_cli_acc == "true"
+
+- name: Setup umami in pm2
+  shell: cd /root/umami && pm2 start npm --name umami -- start && pm2 save
+  changed_when: false
+  when: sync_hf_and_cli_acc == "true"
+
+- name: Start sm2bot
+  shell: cd /root/GitHub/sm2game/bots/bot-sm2 && pm2 start npm --name sm2-bot -- start && pm2 save
+  changed_when: false
+  when: sync_hf_and_cli_acc == "true"
+
+- name: Start sm2 appeals
+  shell: cd /root/GitHub/sm2game/sm2-appeals && pm2 start npm --name sm2-appeals -- start && pm2 save
+  changed_when: false
+  when: sync_hf_and_cli_acc == "true"

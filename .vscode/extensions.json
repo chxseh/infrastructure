@@ -1,0 +1,7 @@
+{
+    "recommendations": [
+        "github.vscode-pull-request-github",
+        "eamodio.gitlens",
+        "redhat.ansible"
+    ]
+}

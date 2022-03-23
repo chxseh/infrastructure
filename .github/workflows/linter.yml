@@ -1,0 +1,23 @@
+---
+name: "🎨 Lint"
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    if: github.actor != 'dependabot[bot]' && !contains(github.event.head_commit.message, '[skip lint]')
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+
+      - name: Lint Ansible Playbook
+        uses: ansible/ansible-lint-action@main
+        with:
+          args: "." # args to pass to ansible-lint command

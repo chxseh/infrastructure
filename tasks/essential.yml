@@ -1,0 +1,317 @@
+- name: Update Packages
+  apt:
+    update_cache: yes
+    upgrade: yes
+
+- name: Install Essential Packages
+  package:
+    name: "{{ packages }}"
+    state: latest
+
+- name: Lockdown SSH
+  lineinfile:
+    dest: /etc/ssh/sshd_config
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+  loop:
+    - {
+        regexp: "^#PasswordAuthentication yes",
+        line: "PasswordAuthentication no",
+      }
+    - { regexp: "^UsePAM yes", line: "UsePAM no" }
+    - {
+        regexp: "^#PermitRootLogin yes",
+        line: "PermitRootLogin prohibit-password",
+      }
+    - {
+        regexp: "^#PermitRootLogin prohibit-password",
+        line: "PermitRootLogin prohibit-password",
+      }
+  register: sshd_config
+
+- name: Enable passwordless sudo for "{{ username }}"
+  lineinfile:
+    dest: /etc/sudoers
+    regexp: "^%wheel"
+    line: "{{ username }} ALL=(ALL) NOPASSWD: ALL"
+    validate: "/usr/sbin/visudo -cf %s"
+  when: username != "root"
+
+- name: Restart SSH Dameon
+  service:
+    name: sshd
+    state: restarted
+  when: sshd_config.changed
+
+- name: Set ZSH as default shell for "{{ username }}"
+  user:
+    name: "{{ username }}"
+    shell: /usr/bin/zsh
+  when: username != "root"
+
+- name: Set ZSH as default shell for root
+  user:
+    name: root
+    shell: /usr/bin/zsh
+
+- name: Disable Default MOTDs for "{{ username }}"
+  copy:
+    content: ""
+    dest: /home/{{ username }}/.hushlogin
+    owner: "{{ username }}"
+    mode: 0600
+  when: username != "root"
+
+- name: Disable Default MOTDs for root
+  copy:
+    content: ""
+    dest: /root/.hushlogin
+    owner: root
+    mode: 0600
+
+- name: Start & Enable fail2ban
+  service:
+    name: fail2ban
+    state: started
+    enabled: yes
+
+- name: Place Public SSH Key for "{{ username }}"
+  copy:
+    content: "{{ ssh_pub_key }}"
+    dest: /home/{{ username }}/.ssh/authorized_keys
+    owner: "{{ username }}"
+    mode: 0600
+  when: username != "root"
+
+- name: Place Public SSH Key for root
+  copy:
+    content: "{{ ssh_pub_key }}"
+    dest: /root/.ssh/authorized_keys
+    owner: root
+    mode: 0600
+
+- name: Place Private SSH Key for "{{ username }}"
+  copy:
+    content: "{{ ssh_priv_key }}"
+    dest: /home/{{ username }}/.ssh/id_rsa
+    owner: "{{ username }}"
+    mode: 0600
+  when: username != "root"
+
+- name: Place Private SSH Key for root
+  copy:
+    content: "{{ ssh_priv_key }}"
+    dest: /root/.ssh/id_rsa
+    owner: root
+    mode: 0600
+
+- name: Install oh my zsh for "{{ username }}"
+  become: false
+  git:
+    repo: https://github.com/ohmyzsh/ohmyzsh.git
+    dest: /home/{{ username }}/.oh-my-zsh
+    depth: 1
+    update: yes
+  when: username != "root"
+
+- name: Install oh my zsh for root
+  git:
+    repo: https://github.com/ohmyzsh/ohmyzsh.git
+    dest: /root/.oh-my-zsh
+    depth: 1
+    update: yes
+
+- name: Install zsh-autosuggestions for "{{ username }}"
+  become: false
+  git:
+    repo: https://github.com/zsh-users/zsh-autosuggestions
+    dest: /home/{{ username }}/.oh-my-zsh/custom/plugins/zsh-autosuggestions
+    depth: 1
+    update: yes
+  when: username != "root"
+
+- name: Install zsh-autosuggestions for root
+  git:
+    repo: https://github.com/zsh-users/zsh-autosuggestions
+    dest: /root/.oh-my-zsh/custom/plugins/zsh-autosuggestions
+    depth: 1
+    update: yes
+
+- name: Install/Update my dotfiles for "{{ username }}"
+  become: false
+  git:
+    repo: https://github.com/chxseh/dotfiles.git
+    dest: /home/{{ username }}/.dotfiles
+    depth: 1
+    update: yes
+  when: username != "root"
+
+- name: Install/Update my dotfiles for root
+  git:
+    repo: https://github.com/chxseh/dotfiles.git
+    dest: /root/.dotfiles
+    depth: 1
+    update: yes
+
+- name: Put MOTD into /etc/motd.sh
+  copy:
+    content: "{{ motd }}"
+    dest: /etc/motd.sh
+    owner: root
+    mode: 0755
+
+- name: Marking motd as executable
+  file: dest=/etc/motd.sh mode=a+x
+
+- name: Make symlink vimrc for "{{ username }}"
+  become: false
+  file:
+    src: /home/{{ username }}/.dotfiles/vimrc
+    dest: /home/{{ username }}/.vimrc
+    owner: "{{ username }}"
+    force: yes
+    state: link
+  when: username != "root"
+
+- name: Make symlink zshrc for "{{ username }}"
+  become: false
+  file:
+    src: /home/{{ username }}/.dotfiles/zshrc
+    dest: /home/{{ username }}/.zshrc
+    owner: "{{ username }}"
+    force: yes
+    state: link
+  when: username != "root"
+
+- name: Make symlink gitconfig for "{{ username }}"
+  become: false
+  file:
+    src: /home/{{ username }}/.dotfiles/gitconfig
+    dest: /home/{{ username }}/.gitconfig
+    owner: "{{ username }}"
+    force: yes
+    state: link
+  when: username != "root"
+
+- name: Make symlink vimrc for root
+  file:
+    src: /root/.dotfiles/vimrc
+    dest: /root/.vimrc
+    owner: root
+    force: yes
+    state: link
+
+- name: Make symlink zshrc for root
+  file:
+    src: /root/.dotfiles/zshrc
+    dest: /root/.zshrc
+    owner: root
+    force: yes
+    state: link
+
+- name: Make symlink gitconfig for root
+  file:
+    src: /root/.dotfiles/gitconfig
+    dest: /root/.gitconfig
+    owner: root
+    force: yes
+    state: link
+
+- name: Clone Scripts for "{{ username }}"
+  become: false
+  git:
+    repo: https://github.com/chxseh/Scripts.git
+    dest: /home/{{ username }}/Scripts
+    depth: 1
+    update: yes
+  when: username != "root"
+
+- name: Clone Scripts for root
+  git:
+    repo: https://github.com/chxseh/Scripts.git
+    dest: /root/Scripts
+    depth: 1
+    update: yes
+
+- name: Edit Unattended Upgrades Config
+  lineinfile:
+    dest: /etc/apt/apt.conf.d/50unattended-upgrades
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+  loop:
+    - {
+        regexp: "^\/\/\t\"[$]{distro_id}:[$]{distro_codename}-updates\";",
+        line: "\t\"${distro_id}:${distro_codename}-updates\";",
+      }
+    - {
+        regexp: "^\/\/Unattended-Upgrade::Remove-Unused-Kernel-Packages \"true\";",
+        line: 'Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";',
+      }
+    - {
+        regexp: "^\/\/Unattended-Upgrade::Remove-Unused-Dependencies \"false\";",
+        line: 'Unattended-Upgrade::Remove-Unused-Dependencies "true";',
+      }
+    - {
+        regexp: "^\/\/Unattended-Upgrade::Automatic-Reboot \"false\";",
+        line: 'Unattended-Upgrade::Automatic-Reboot "true";',
+      }
+    - {
+        regexp: "^\/\/Unattended-Upgrade::Automatic-Reboot-Time \"02:00\";",
+        line: 'Unattended-Upgrade::Automatic-Reboot-Time "02:00";',
+      }
+
+- name: Edit Unattended Upgrades Config 2
+  copy:
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Download-Upgradeable-Packages "1";
+      APT::Periodic::AutocleanInterval "7";
+      APT::Periodic::Unattended-Upgrade "1";
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    owner: root
+    mode: 0644
+
+- name: sysctl Changes
+  lineinfile:
+    dest: /etc/sysctl.conf
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+  loop:
+    - {
+        regexp: "^#net.ipv4.conf.default.rp_filter=1",
+        line: "net.ipv4.conf.default.rp_filter=1",
+      }
+    - {
+        regexp: "^#net.ipv4.conf.all.rp_filter=1",
+        line: "net.ipv4.conf.all.rp_filter=1",
+      }
+    - {
+        regexp: "^#net.ipv4.conf.all.accept_redirects = 0",
+        line: "net.ipv4.conf.all.accept_redirects = 0",
+      }
+    - {
+        regexp: "^#net.ipv6.conf.all.accept_redirects = 0",
+        line: "net.ipv6.conf.all.accept_redirects = 0",
+      }
+    - {
+        regexp: "^#net.ipv4.conf.all.send_redirects = 0",
+        line: "net.ipv4.conf.all.send_redirects = 0",
+      }
+    - {
+        regexp: "^#net.ipv4.conf.all.accept_source_route = 0",
+        line: "net.ipv4.conf.all.accept_source_route = 0",
+      }
+    - {
+        regexp: "^#net.ipv6.conf.all.accept_source_route = 0",
+        line: "net.ipv6.conf.all.accept_source_route = 0",
+      }
+    - {
+        regexp: "^#net.ipv4.conf.all.log_martians = 1",
+        line: "net.ipv4.conf.all.log_martians = 1",
+      }
+  register: sysctl_conf
+
+- name: Restart sysctl if changed
+  become: true
+  command: sysctl -p
+  when: sysctl_conf.changed

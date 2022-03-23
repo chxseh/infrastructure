@@ -1,0 +1,9 @@
+# {{ ansible_managed }}
+[Interface]
+ListenPort = 51820
+PrivateKey = {{ WG_PRIV }}
+
+[Peer]
+PublicKey = {{ WG_PUB }}
+PresharedKey = {{ WG_PRESHARED }}
+AllowedIPs = 10.6.0.2/32

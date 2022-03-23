@@ -1,0 +1,15 @@
+- name: Create Symlink for After MIAB Upgrade Script
+  file:
+    src: /root/Scripts/Mail/After_MIAB_Upgrade.sh
+    dest: /root/After_MIAB_Upgrade.sh
+    owner: root
+    force: yes
+    state: link
+
+- name: Create Symlink for Blacklist Script
+  file:
+    src: /root/Scripts/Mail/Blacklist.sh
+    dest: /root/Blacklist.sh
+    owner: root
+    force: yes
+    state: link

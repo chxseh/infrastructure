@@ -1,0 +1,11 @@
+---
+exclude_paths:
+  - .cache/
+  - .github/
+  - .vscode/
+
+skip_list:
+  - "401"
+  - "403"
+  - "503"
+  - "305"

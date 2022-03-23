@@ -1,0 +1,102 @@
+- name: Create Backup Folder /var/www
+  file:
+    path: ~/backups/www/var-www/
+    state: directory
+    mode: 0600
+    recurse: yes
+
+- name: Create Backup Folder /etc/apache2
+  file:
+    path: ~/backups/www/etc-apache2/
+    state: directory
+    mode: 0600
+    recurse: yes
+
+- name: Create Backup Folder /etc/letsencrypt
+  file:
+    path: ~/backups/www/etc-letsencrypt/
+    state: directory
+    mode: 0600
+    recurse: yes
+
+- name: Create Backup Folder miab/_encryption-key-and-sshconf
+  file:
+    path: ~/backups/miab/_encryption-key-and-sshconf/
+    state: directory
+    mode: 0600
+    recurse: yes
+
+- name: Create Backup Folder for Docker Metabase
+  file:
+    path: ~/backups/docker/metabase-data/
+    state: directory
+    mode: 0600
+    recurse: yes
+
+- name: Create Backup Folder for Docker PrivateBin
+  file:
+    path: ~/backups/docker/pbin-data/
+    state: directory
+    mode: 0600
+    recurse: yes
+
+- name: Create Backup Folder for Docker vw-data
+  file:
+    path: ~/backups/docker/vw-data/
+    state: directory
+    mode: 0600
+    recurse: yes
+
+- name: Create Backup Folder for Docker SelfHostedRSS-data
+  file:
+    path: ~/backups/docker/SelfHostedRSS-data/_data/
+    state: directory
+    mode: 0600
+    recurse: yes
+
+- name: Create Backup Folder for Docker ShareX-Upload-Server
+  file:
+    path: ~/backups/docker/ShareX-Upload-Server/src/server/uploads
+    state: directory
+    mode: 0600
+    recurse: yes
+
+- name: Create Backup Folder for Docker Portainer
+  file:
+    path: ~/backups/docker/portainer_data/_data/
+    state: directory
+    mode: 0600
+    recurse: yes
+
+- name: Create Backup Folder for Home
+  file:
+    path: ~/backups/root-home/
+    state: directory
+    mode: 0600
+    recurse: yes
+
+- name: Create Backup Folder for github-ci-runner
+  file:
+    path: ~/backups/github-ci-runner/.ssh/
+    state: directory
+    mode: 0600
+    recurse: yes
+
+- name: Install Wireguard
+  apt:
+    name: wireguard
+    state: latest
+
+- name: Create WG Config
+  template:
+    dest: /etc/wireguard/wg0.conf
+    src: server_wg0.conf.j2
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Start WG
+  systemd:
+    name: wg-quick@wg0
+    enabled: yes
+    state: started

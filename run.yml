@@ -1,0 +1,20 @@
+---
+- hosts: all
+  become: yes
+  tasks:
+    - import_tasks: tasks/essential.yml
+
+- hosts: main_servers
+  become: yes
+  tasks:
+    - import_tasks: tasks/mainserver.yml
+
+- hosts: backup_servers
+  become: no
+  tasks:
+    - import_tasks: tasks/backupserver.yml
+
+- hosts: mail_servers
+  become: yes
+  tasks:
+    - import_tasks: tasks/miab.yml
